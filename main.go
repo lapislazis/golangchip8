@@ -8,7 +8,6 @@ import (
 func main() {
 	emu.Init()
 	emu.NewVM()
-	fmt.Println("Testing")
 	//c8 := emu.NewVM()
 	//fmt.Printf("%v", c8.vm.mem)
 }
