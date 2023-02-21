@@ -84,12 +84,12 @@ func NewVM()  chip8 {
 	//vm.mem[513] = 0x00
 	//vm.mem[1280] = 0x12
 	//vm.mem[1281] = 0x00
-	vm.mem[512] = 0x61
-	vm.mem[513] = 0xFD
-	vm.mem[514] = 0x62
-	vm.mem[515] = 0x03
-	vm.mem[516] = 0x81
-	vm.mem[517] = 0x24
+	//vm.mem[512] = 0x61
+	//vm.mem[513] = 0xFD
+	//vm.mem[514] = 0x62
+	//vm.mem[515] = 0x03
+	//vm.mem[516] = 0x81
+	//vm.mem[517] = 0x24
 	
 
 	return vm
