@@ -79,88 +79,80 @@ func NewVM()  chip8 {
 	for i := 0; i < 80; i++ {
 		vm.mem[i] = fontSet[i]
 		}	
-
-	//Print	empty variables test
-	fmt.Printf("V1-16 contain:\n")
-	for i := 0; i < 16; i++ {
-		fmt.Printf("0x%X ", vm.v[i])
-	}
-	fmt.Printf("\nThe stack contains:\n")
-	for i := 0; i < 16; i++ {
-		fmt.Printf("0x%X\n", vm.stack[i])
-	}
-	fmt.Printf("Program counter contains:\n0x%X\n", vm.pc)
-	fmt.Printf("Index register contains:\n0x%X\n", vm.I) 
-	fmt.Printf("Opcode contains:\n0x%X\n", vm.op)
-
-	//Print mem test
-	fmt.Printf("Memory contains:\n")
-	for i := 0; i < 80; i++ {	
-		fmt.Printf("0x%X ", vm.mem[i])
-	}
+	//FDE Testing (setting memory)
+	//vm.mem[512] = 0x15
+	//vm.mem[513] = 0x00
+	//vm.mem[1280] = 0x12
+	//vm.mem[1281] = 0x00
+	vm.mem[512] = 0x61
+	vm.mem[513] = 0xFD
+	vm.mem[514] = 0x62
+	vm.mem[515] = 0x03
+	vm.mem[516] = 0x81
+	vm.mem[517] = 0x24
 	
-	//Assign variables test
-	fmt.Printf("\nV1-16 have been assigned:\n")
-	for i := 0; i < 16; i++ {
-		vm.v[i] = byte(i)
-		fmt.Printf("0x%X ", vm.v[i])
-	}
-	fmt.Printf("\nStack has been assigned:\n")
-	for i := 0; i < 16; i++ {
-		vm.stack[i] = uint16(i)
-		fmt.Printf("0x%X ", vm.stack[i])
-	}
-	vm.I = 65535
-	fmt.Printf("\nIndex counter has been assigned:\n0x%X\n", vm.I)
-	vm.op = 0x00e0
-	fmt.Printf("Opcode has been assigned:\n0x%X\n", vm.op)
-	
-	//Overflow variable test VERY UNEXPECTED RESULT (resolved)
-	vm.v[15] += 255
-	fmt.Printf("Variable overflow:\n0x%X\n", vm.v[15])
-	vm.I += 1
-	fmt.Printf("Index overflow:\n0x%X\n", vm.I)
-
-	//Check clockspeed is accurate
-	
-	//Doesn't work
-	//done := make(chan bool)
-	//go func() {
-	//	for {
-	//		select {
-	//		case <-done:
-	//			return
-	//		case tick:= <-vm.clock.C:
-	//			tick += 1
-	//		}
-	//	}
-	//}()
-	//time.Sleep(1 * time.Second)
-	//vm.clock.Stop
-	//done <- true
-	//fmt.Printf("\nFinal tick was:\n%v", tick)
-	
-	//Doesn't end loop
-	//for start := time.Now(); time.Since(start) < time.Second; {
-	//	for _ = range vm.clock.C {
-	//		t++
-	//	}
-	//}
-
-	t := 0
-	loop:
-		for timeout := time.After(5 * time.Second); ; {
-			select {
-			case <-timeout: 
-				break loop
-			case <-vm.clock.C:
-				t++
-			}
-		}
-	fmt.Printf("Final tick was:\n%v\n", t)
 
 	return vm
 }
+func Clock(d time.Duration) <-chan time.Time {
+	ch := make(chan time.Time, 1)
+	go func() {
+		for {
+		time.Sleep(d)
+		ch <- time.Now()
+	}
+	close(ch)
+	}()
+	return ch
+}
+	
+
+//Fetch-Decode-Execute Cycle
+func (vm *chip8) FDE() {
+
+	//Sets opcode variable to whats in mem, shift left, OR whats in mem+1
+	vm.op = (uint16(vm.mem[vm.pc]) << 8) | uint16(vm.mem[vm.pc+1])
+
+	//Match opcode to first nibble
+	switch vm.op & 0xF000 {
+	//First nibble is 0001
+	case 0x1000: //0x1NNN jumps to NNN on memory
+		//Program counter = last 3 nibbles of opcode
+		vm.pc = vm.op & 0x0FFF
+		fmt.Printf("Current address in memory is %v\n", vm.pc)
+	case 0x3000: //0x3XNN Sets the value of VX to NN
+		//Skips if VX is already NN
+		if uint16(vm.v[(vm.op & 0x0F00) >> 8]) == vm.op & 0x00FF {
+			vm.pc += 4
+		} else {
+			vm.pc += 2
+		}
+	case 0x6000: //0x6XNN sets value of VX to NN
+		vm.v[(vm.op & 0x0F00) >> 8] = byte(vm.op & 0x00FF)
+		fmt.Printf("Value of V%d ", ((vm.op & 0x0F00) >> 8))
+		fmt.Println("is set to ", (vm.v[(vm.op & 0x0F00) >> 8]))
+		vm.pc += 2
+	case 0x8000: 
+		switch vm.op & 0x000F { //Check the last nibble 
+		case 0x0004: //0x8XY4 Adds VY to VX, sets VF to 1 if overflow
+			if vm.v[(vm.op & 0x00F0) >> 4] > (0xFF - vm.v[(vm.op & 0x0F00) >> 8]) {
+				vm.v[15] = 1 //Set VF to 1
+				fmt.Println("Overflow! VF is set to ", vm.v[15])
+			} else {
+				vm.v[15] = 0
+			}
+			vm.v[(vm.op & 0x0F00) >> 8] += vm.v[(vm.op & 0x00F0) >> 4] //Otherwise, add VX and VY
+			fmt.Println("The value of V1 after addition is ", vm.v[1])
+
+		}
+	default:
+		fmt.Printf("Invalid opcode 0x%X\n", vm.op)
+	}
+	
+}
+
+	
+
 
 
 
