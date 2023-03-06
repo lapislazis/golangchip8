@@ -59,6 +59,7 @@ type chip8 struct {
 	//CPU clock
 	clock *time.Ticker
 
+
 	// TODO: timers, keypad, graphics, audio, shutdown
 }
 
@@ -104,8 +105,8 @@ func Clock(d time.Duration) <-chan time.Time {
 	close(ch)
 	}()
 	return ch
-}
-	
+}	
+
 
 //Fetch-Decode-Execute Cycle
 func (vm *chip8) FDE() {
