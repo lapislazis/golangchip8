@@ -32,10 +32,6 @@ func main() {
 
 	for range chip8.Clock(time.Second/700) {
 		c8.FDE()
-		//Colour in screen
-		render.SetDrawColor(255, 190, 200, 255)
-		render.Clear()
-		render.Present()
 	}
 }
 

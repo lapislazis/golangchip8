@@ -120,7 +120,6 @@ func (vm *chip8) FDE() {
 	case 0x1000: //0x1NNN jumps to NNN on memory
 		//Program counter = last 3 nibbles of opcode
 		vm.pc = vm.op & 0x0FFF
-		fmt.Printf("Current address in memory is %v\n", vm.pc)
 	case 0x3000: //0x3XNN Sets the value of VX to NN
 		//Skips if VX is already NN
 		if uint16(vm.v[(vm.op & 0x0F00) >> 8]) == vm.op & 0x00FF {
@@ -130,20 +129,16 @@ func (vm *chip8) FDE() {
 		}
 	case 0x6000: //0x6XNN sets value of VX to NN
 		vm.v[(vm.op & 0x0F00) >> 8] = byte(vm.op & 0x00FF)
-		fmt.Printf("Value of V%d ", ((vm.op & 0x0F00) >> 8))
-		fmt.Println("is set to ", (vm.v[(vm.op & 0x0F00) >> 8]))
 		vm.pc += 2
 	case 0x8000: 
 		switch vm.op & 0x000F { //Check the last nibble 
 		case 0x0004: //0x8XY4 Adds VY to VX, sets VF to 1 if overflow
 			if vm.v[(vm.op & 0x00F0) >> 4] > (0xFF - vm.v[(vm.op & 0x0F00) >> 8]) {
 				vm.v[15] = 1 //Set VF to 1
-				fmt.Println("Overflow! VF is set to ", vm.v[15])
 			} else {
 				vm.v[15] = 0
 			}
 			vm.v[(vm.op & 0x0F00) >> 8] += vm.v[(vm.op & 0x00F0) >> 4] //Otherwise, add VX and VY
-			fmt.Println("The value of V1 after addition is ", vm.v[1])
 
 		}
 	default:
