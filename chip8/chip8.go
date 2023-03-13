@@ -59,6 +59,11 @@ type chip8 struct {
 	//CPU clock
 	clock *time.Ticker
 
+	//Graphics
+	gfx [32][64]uint8 //size of display
+
+	//Draw flag
+	drawFlag bool
 
 	// TODO: timers, keypad, graphics, audio, shutdown
 }
@@ -75,26 +80,20 @@ func NewVM()  chip8 {
 		pc:	0x200,
 		stack: [16]uint16{},
 		clock: time.NewTicker(time.Second / 700),
+		drawFlag: true,
 		}
 	//Load fontset
 	for i := 0; i < 80; i++ {
 		vm.mem[i] = fontSet[i]
-		}	
-	//FDE Testing (setting memory)
-	//vm.mem[512] = 0x15
-	//vm.mem[513] = 0x00
-	//vm.mem[1280] = 0x12
-	//vm.mem[1281] = 0x00
-	//vm.mem[512] = 0x61
-	//vm.mem[513] = 0xFD
-	//vm.mem[514] = 0x62
-	//vm.mem[515] = 0x03
-	//vm.mem[516] = 0x81
-	//vm.mem[517] = 0x24
-	
+		}
+	vm.v[1] = 2
+	vm.mem[512] = 0xD1
+	vm.mem[513] = 0x15
+	vm.I = 0x0	
 
 	return vm
 }
+
 func Clock(d time.Duration) <-chan time.Time {
 	ch := make(chan time.Time, 1)
 	go func() {
@@ -107,6 +106,15 @@ func Clock(d time.Duration) <-chan time.Time {
 	return ch
 }	
 
+func (vm *chip8) Buffer() [32][64]uint8 {
+	return vm.gfx
+}
+
+func (vm *chip8) Draw() bool {
+	df := vm.drawFlag
+	vm.drawFlag = false
+	return df
+}
 
 //Fetch-Decode-Execute Cycle
 func (vm *chip8) FDE() {
@@ -116,6 +124,21 @@ func (vm *chip8) FDE() {
 
 	//Match opcode to first nibble
 	switch vm.op & 0xF000 {
+	//First nibble is 0000
+	case 0x0000: 
+		switch vm.op & 0x000F {
+		case 0x0000: //0x0000 clears screen
+			for i := 0; i < len(vm.gfx); i++ {
+				for j := 0; j < len(vm.gfx[i]); j++ {
+					vm.gfx[i][j] = 0x0
+				}
+			}
+			vm.drawFlag = true
+			vm.pc = vm.pc + 2
+		//0x00EE here
+		default: 
+			fmt.Printf("Invalid opcode %X\n", vm.op)
+		}	
 	//First nibble is 0001
 	case 0x1000: //0x1NNN jumps to NNN on memory
 		//Program counter = last 3 nibbles of opcode
@@ -139,8 +162,30 @@ func (vm *chip8) FDE() {
 				vm.v[15] = 0
 			}
 			vm.v[(vm.op & 0x0F00) >> 8] += vm.v[(vm.op & 0x00F0) >> 4] //Otherwise, add VX and VY
-
 		}
+	case 0xA000: //0xANNN Sets I to address NNN
+		vm.I = vm.op & 0x0FFF
+		vm.pc = vm.pc + 2
+	case 0xD000: //0xDXYN Draws sprite of length N in memory starting at I at co-ords (VX, VY)
+		x := vm.v[(vm.op & 0x0F00) >> 8] 
+		y := vm.v[(vm.op & 0x00F0) >> 4]
+		h := (vm.op & 0x000F)
+		vm.v[0xF] = 0
+		var j uint16 = 0
+		var i uint16 = 0
+		for j = 0; j < h; j++ {
+			pixel := vm.mem[vm.I+j] //Pixel = current y-axis in memory
+			for i = 0; i < 8; i++ { //For each x up to 8 pixels wide
+				if (pixel & (0x80 >> i)) != 0 {	//If current byte isn't 0
+					if vm.gfx[(y + uint8(j))][x + uint8(i)] == 1 { //And if that byte in display is already on
+						vm.v[0xF] = 1 //Collision flag on
+					}
+					vm.gfx[(y + uint8(j))][(x + uint8(i))] ^= 1 //Either way, set the pixel to its value OR 1 
+				}
+			}
+		}
+		vm.drawFlag = true
+		vm.pc = vm.pc + 2
 	default:
 		fmt.Printf("Invalid opcode 0x%X\n", vm.op)
 	}
