@@ -8,6 +8,9 @@ package chip8
 import (
 	"fmt"
 	"time"
+	"os"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
 )
 
 // Format of the fontset
@@ -56,6 +59,9 @@ type chip8 struct {
 	//Delay timer
 	delayTime byte
 
+	//Sound timer
+	soundTime byte
+
 	//CPU clock
 	clock *time.Ticker
 
@@ -64,6 +70,12 @@ type chip8 struct {
 
 	//Draw flag
 	drawFlag bool
+
+	//Keyboard
+	key [16]uint8 //CHIP-8 keypad had 16 keys
+
+	//Channel to check for audio events
+	audioChan chan struct{}
 
 	// TODO: timers, keypad, graphics, audio, shutdown
 }
@@ -75,21 +87,19 @@ func Init() {
 //Initialise emulator instance
 func NewVM()  chip8 {
 	vm := chip8{
-		mem:	[4096]byte{},
-		v:	[16]byte{},
-		pc:	0x200,
-		stack: [16]uint16{},
-		clock: time.NewTicker(time.Second / 700),
-		drawFlag: true,
+		mem:		[4096]byte{},
+		v:		[16]byte{},
+		pc:		0x200,
+		stack: 		[16]uint16{},
+		clock: 		time.NewTicker(time.Second / 700),
+		drawFlag:	true,
+		audioChan:	make(chan struct{}),
 		}
 	//Load fontset
 	for i := 0; i < 80; i++ {
 		vm.mem[i] = fontSet[i]
 		}
-	vm.v[1] = 2
-	vm.mem[512] = 0xD1
-	vm.mem[513] = 0x15
-	vm.I = 0x0	
+	vm.v[1] = 1
 
 	return vm
 }
@@ -116,9 +126,55 @@ func (vm *chip8) Draw() bool {
 	return df
 }
 
+//Checks a key is pressed (check format in main)
+func (vm *chip8) Key(num uint8, down bool) {
+	if down {
+		vm.key[num] = 1
+	} else {
+		vm.key[num] = 0
+	}
+}
+
+func (vm *chip8) delayTimeTick() {
+	if vm.delayTime > 0 {
+		vm.delayTime --
+	}
+}
+
+func (vm *chip8) Audio() {
+	f, err := os.Open("beep.mp3")
+	if err != nil {
+		return
+	}
+	
+	streamer, format, err := mp3.Decode(f)
+	if err != nil {
+		return
+	}
+	defer streamer.Close()
+
+	speaker.Init(
+		format.SampleRate,
+		format.SampleRate.N(time.Second/10),
+	)
+
+	for range vm.audioChan {
+		speaker.Play(streamer)
+		fmt.Printf("Beep!!")
+	}
+}
+
+func (vm *chip8) soundTimeTick() {
+	if vm.soundTime > 0 {
+		if vm.soundTime == 1 {
+			vm.audioChan <- struct{}{}
+		}
+		vm.soundTime--
+	}
+}			
+
 //Fetch-Decode-Execute Cycle
 func (vm *chip8) FDE() {
-
 	//Sets opcode variable to whats in mem, shift left, OR whats in mem+1
 	vm.op = (uint16(vm.mem[vm.pc]) << 8) | uint16(vm.mem[vm.pc+1])
 
@@ -137,7 +193,7 @@ func (vm *chip8) FDE() {
 			vm.pc = vm.pc + 2
 		//0x00EE here
 		default: 
-			fmt.Printf("Invalid opcode %X\n", vm.op)
+			fmt.Printf("Invalid opcode 0x%X\n", vm.op)
 		}	
 	//First nibble is 0001
 	case 0x1000: //0x1NNN jumps to NNN on memory
@@ -186,13 +242,68 @@ func (vm *chip8) FDE() {
 		}
 		vm.drawFlag = true
 		vm.pc = vm.pc + 2
+
+	case 0xE000:
+		switch vm.op & 0x00FF {
+		case 0x009E:
+			if vm.key[vm.v[(vm.op & 0x0F00) >> 8]] == 1 {
+				vm.pc = vm.pc + 4
+			} else {
+				vm.pc = vm.pc + 2
+			}
+		//0x00A1 here
+		default:
+			fmt.Printf("Invalid opcode 0x%x\n", vm.op)
+			vm.pc = vm.pc + 2
+		}	
+
+	case 0xF000:
+		switch vm.op * 0x00FF {
+		case 0x0018: //0xFX18 sets sound timer to X
+			vm.soundTime = vm.v[(vm.op & 0x0F00) >> 8]
+			vm.pc = vm.pc + 2
+		default:
+			fmt.Printf("Invalid opcode 0x%x\n", vm.op)
+			vm.pc = vm.pc + 2
+		}
+
 	default:
 		fmt.Printf("Invalid opcode 0x%X\n", vm.op)
+		vm.pc = vm.pc + 2
 	}
 	
 }
 
-	
+func (vm *chip8) LoadProgram(filePath string) error {
+	//Reads file using os library
+	file, fileErr := os.OpenFile(filePath, os.O_RDONLY, 0777)
+	if fileErr != nil {
+		return fileErr
+	}
+	defer file.Close()
+
+	//Reads file information, also using os
+	fStat, fStatErr := file.Stat()
+	if fStatErr != nil {
+		return fStatErr
+	}
+	if int64(len(vm.mem)-512) < fStat.Size() { //Checks file size doesn't exceed memory space
+		return fmt.Errorf("File size is greater than memory")
+	}
+
+	buffer := make([]byte, fStat.Size())
+	//Checks file can be read properly
+	if _, readErr := file.Read(buffer); readErr != nil {
+		return readErr
+	}
+
+	//If there are no errors, replace every byte in memory from 0x200 onward
+	for i := 0; i < len(buffer); i++ {
+		vm.mem[i+512] = buffer[i]
+	}
+
+	return nil
+}
 
 
 
