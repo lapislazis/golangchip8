@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"time"
 	"os"
+	gui "alex/chip8/gui"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
+	sdl "github.com/veandco/go-sdl2/sdl"
 )
 
 // Format of the fontset
@@ -62,11 +64,14 @@ type chip8 struct {
 	//Sound timer
 	soundTime byte
 
+	//Channel to check for audio events
+	audioChan chan struct{}
+
 	//CPU clock
-	clock *time.Ticker
+	Clock *time.Ticker
 
 	//Graphics
-	gfx [32][64]uint8 //size of display
+	gfx [64 * 32]uint8 //size of display
 
 	//Draw flag
 	drawFlag bool
@@ -74,34 +79,190 @@ type chip8 struct {
 	//Keyboard
 	key [16]uint8 //CHIP-8 keypad had 16 keys
 
-	//Channel to check for audio events
-	audioChan chan struct{}
+	//Channel to check for shutdown signal
+	ShutdownChan chan struct{}
+
+	//SDL window
+	win *gui.Window
 
 	// TODO: timers, keypad, graphics, audio, shutdown
 }
 
-func Init() {
-	//Check that the package is imported by main
-	fmt.Println("Chip8 is initialised")
-}
 //Initialise emulator instance
-func NewVM()  chip8 {
+func NewVM(filePath string, clockSpeed int)  (*chip8, error) {
+	win, err := gui.NewWindow()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	vm := chip8{
-		mem:		[4096]byte{},
-		v:		[16]byte{},
-		pc:		0x200,
-		stack: 		[16]uint16{},
-		clock: 		time.NewTicker(time.Second / 700),
-		drawFlag:	true,
-		audioChan:	make(chan struct{}),
+		mem:			[4096]byte{},
+		v:				[16]byte{},
+		pc:				0x200,
+		stack: 			[16]uint16{},
+		audioChan:		make(chan struct{}),
+		Clock:			time.NewTicker(time.Second / time.Duration(clockSpeed)),
+		ShutdownChan:	make(chan struct{}),
+		win:			win,
 		}
+
 	//Load fontset
 	for i := 0; i < 80; i++ {
 		vm.mem[i] = fontSet[i]
 		}
-	vm.v[1] = 1
 
-	return vm
+
+	if loadErr := vm.LoadProgram(filePath); loadErr != nil {
+		panic(loadErr)
+		return nil, loadErr
+	}
+
+	return &vm, nil
+}
+
+func (vm *chip8) Run() {
+	for {
+		select {
+		case <-vm.Clock.C:
+			if !vm.win.Closed() {
+				vm.FDE()
+				vm.drawOrUpdate()
+				vm.KeyPoll()
+				vm.delayTimeTick()
+				vm.soundTimeTick()
+				continue
+			}
+			break
+		case <-vm.ShutdownChan:
+			break
+		}
+		break
+	}
+	vm.signalShutdown("Shutting down...")
+}
+
+func (vm *chip8) drawOrUpdate() {
+	if vm.drawFlag {
+		vm.win.DrawGraphics(vm.graphicsBuffer())
+	} else {
+		vm.win.UpdateInput()
+	}
+}
+
+func (vm *chip8) KeyPoll() {
+	if sdlError := sdl.Init(sdl.INIT_EVERYTHING); sdlError != nil {
+		panic(sdlError)
+	}
+	for poll := sdl.PollEvent(); poll != nil; poll = sdl.PollEvent() {
+			switch pl := poll.(type) {
+			case *sdl.QuitEvent:
+				fmt.Printf("Quit event detected")		
+			case *sdl.KeyboardEvent:
+				if pl.Type == sdl.KEYUP {
+					switch pl.Keysym.Sym {
+					case sdl.K_1:
+						vm.Key(0x1, false)
+					case sdl.K_2:
+						vm.Key(0x2, false)
+					case sdl.K_3:
+						vm.Key(0x3, false)
+					case sdl.K_4:
+						vm.Key(0xC, false)
+					case sdl.K_q:
+						vm.Key(0x4, false)
+					case sdl.K_w:
+						vm.Key(0x5, false)
+					case sdl.K_e:
+						vm.Key(0x6, false)
+					case sdl.K_r:
+						vm.Key(0xD, false)
+					case sdl.K_a:
+						vm.Key(0x7, false)
+					case sdl.K_s:
+						vm.Key(0x8, false)
+					case sdl.K_d:
+						vm.Key(0x9, false)
+					case sdl.K_f:
+						vm.Key(0xE, false)
+					case sdl.K_z:
+						vm.Key(0xA, false)
+					case sdl.K_x:
+						vm.Key(0x0, false)
+					case sdl.K_c:
+						vm.Key(0xB, false)
+					case sdl.K_v:
+						vm.Key(0xF, false)
+					}
+				} else if pl.Type == sdl.KEYDOWN {
+					switch pl.Keysym.Sym {
+					case sdl.K_1:
+						vm.Key(0x1, true)
+					case sdl.K_2:
+						vm.Key(0x2, true)
+					case sdl.K_3:
+						vm.Key(0x3, true)
+					case sdl.K_4:
+						vm.Key(0xC, true)
+					case sdl.K_q:
+						vm.Key(0x4, true)
+					case sdl.K_w:
+						vm.Key(0x5, true)
+					case sdl.K_e:
+						vm.Key(0x6, true)
+					case sdl.K_r:
+						vm.Key(0xD, true)
+					case sdl.K_a:
+						vm.Key(0x7, true)
+					case sdl.K_s:
+						vm.Key(0x8, true)
+					case sdl.K_d:
+						vm.Key(0x9, true)
+					case sdl.K_f:
+						vm.Key(0xE, true)
+					case sdl.K_z:
+						vm.Key(0xA, true)
+					case sdl.K_x:
+						vm.Key(0x0, true)
+					case sdl.K_c:
+						vm.Key(0xB, true)
+					case sdl.K_v:
+						vm.Key(0xF, true)
+					}
+				}
+			}
+		}
+	}
+
+func (vm *chip8) LoadProgram(filePath string) error {
+	//Reads file using os library
+	file, fileErr := os.OpenFile(filePath, os.O_RDONLY, 0777)
+	if fileErr != nil {
+		return fileErr
+	}
+	defer file.Close()
+
+	//Reads file information, also using os
+	fStat, fStatErr := file.Stat()
+	if fStatErr != nil {
+		return fStatErr
+	}
+	if int64(len(vm.mem)-512) < fStat.Size() { //Checks file size doesn't exceed memory space
+		return fmt.Errorf("File size is greater than memory")
+	}
+
+	fileBuffer := make([]byte, fStat.Size())
+	//Checks file can be read properly
+	if _, readErr := file.Read(fileBuffer); readErr != nil {
+		return readErr
+	}
+
+	//If there are no errors, replace every byte in memory from 0x200 onward
+	for i := 0; i < len(fileBuffer); i++ {
+		vm.mem[i+512] = fileBuffer[i]
+	}
+
+	return nil
 }
 
 func Clock(d time.Duration) <-chan time.Time {
@@ -116,16 +277,6 @@ func Clock(d time.Duration) <-chan time.Time {
 	return ch
 }	
 
-func (vm *chip8) Buffer() [32][64]uint8 {
-	return vm.gfx
-}
-
-func (vm *chip8) Draw() bool {
-	df := vm.drawFlag
-	vm.drawFlag = false
-	return df
-}
-
 //Checks a key is pressed (check format in main)
 func (vm *chip8) Key(num uint8, down bool) {
 	if down {
@@ -138,6 +289,15 @@ func (vm *chip8) Key(num uint8, down bool) {
 func (vm *chip8) delayTimeTick() {
 	if vm.delayTime > 0 {
 		vm.delayTime --
+	}
+}
+
+func (vm *chip8) soundTimeTick() {
+	if vm.soundTime > 0 {
+		if vm.soundTime == 1 {
+			vm.audioChan <- struct{}{}
+		}
+		vm.soundTime--
 	}
 }
 
@@ -162,16 +322,42 @@ func (vm *chip8) Audio() {
 		speaker.Play(streamer)
 		fmt.Printf("Beep!!")
 	}
+}	
+
+func (vm chip8) graphicsBuffer() [64 * 32]uint8 {
+	return vm.gfx
+}	
+
+func (vm *chip8) signalShutdown(msg string) {
+	fmt.Println(msg)
+	close(vm.audioChan)
+	vm.ShutdownChan <- struct{}{}
 }
 
-func (vm *chip8) soundTimeTick() {
-	if vm.soundTime > 0 {
-		if vm.soundTime == 1 {
-			vm.audioChan <- struct{}{}
+func (vm *chip8) drawSprite(x, y uint16) {
+	height := vm.op & 0x000F
+	vm.v[0xF] = 0
+	var pix uint16
+
+	for yLine := uint16(0); yLine < height; yLine++ {
+		pix = uint16(vm.mem[vm.I+yLine])
+
+		for xLine := uint16(0); xLine < 8; xLine++ {
+			ind := (x + xLine + ((y + yLine) * 64))
+			if ind >= uint16(len(vm.graphicsBuffer())) {
+				continue
+			}
+			if (pix & (0x80 >> xLine)) != 0 {
+				if vm.graphicsBuffer()[ind] == 1 {
+					vm.v[0xF] = 1
+				}
+				vm.gfx[ind] ^= 1
+			}
 		}
-		vm.soundTime--
 	}
-}			
+
+	vm.drawFlag = true
+}
 
 //Fetch-Decode-Execute Cycle
 func (vm *chip8) FDE() {
@@ -184,17 +370,14 @@ func (vm *chip8) FDE() {
 	case 0x0000: 
 		switch vm.op & 0x000F {
 		case 0x0000: //0x0000 clears screen
-			for i := 0; i < len(vm.gfx); i++ {
-				for j := 0; j < len(vm.gfx[i]); j++ {
-					vm.gfx[i][j] = 0x0
-				}
-			}
-			vm.drawFlag = true
-			vm.pc = vm.pc + 2
+		vm.gfx = [64 * 32]byte{}
+		vm.pc += 2
+
 		//0x00EE here
 		default: 
 			fmt.Printf("Invalid opcode 0x%X\n", vm.op)
 		}	
+		
 	//First nibble is 0001
 	case 0x1000: //0x1NNN jumps to NNN on memory
 		//Program counter = last 3 nibbles of opcode
@@ -219,29 +402,16 @@ func (vm *chip8) FDE() {
 			}
 			vm.v[(vm.op & 0x0F00) >> 8] += vm.v[(vm.op & 0x00F0) >> 4] //Otherwise, add VX and VY
 		}
+
 	case 0xA000: //0xANNN Sets I to address NNN
 		vm.I = vm.op & 0x0FFF
 		vm.pc = vm.pc + 2
+
 	case 0xD000: //0xDXYN Draws sprite of length N in memory starting at I at co-ords (VX, VY)
-		x := vm.v[(vm.op & 0x0F00) >> 8] 
-		y := vm.v[(vm.op & 0x00F0) >> 4]
-		h := (vm.op & 0x000F)
-		vm.v[0xF] = 0
-		var j uint16 = 0
-		var i uint16 = 0
-		for j = 0; j < h; j++ {
-			pixel := vm.mem[vm.I+j] //Pixel = current y-axis in memory
-			for i = 0; i < 8; i++ { //For each x up to 8 pixels wide
-				if (pixel & (0x80 >> i)) != 0 {	//If current byte isn't 0
-					if vm.gfx[(y + uint8(j))][x + uint8(i)] == 1 { //And if that byte in display is already on
-						vm.v[0xF] = 1 //Collision flag on
-					}
-					vm.gfx[(y + uint8(j))][(x + uint8(i))] ^= 1 //Either way, set the pixel to its value OR 1 
-				}
-			}
-		}
-		vm.drawFlag = true
-		vm.pc = vm.pc + 2
+		x := uint16(vm.v[(vm.op & 0x0F00) >> 8])
+		y := uint16(vm.v[(vm.op & 0x00F0) >> 8])
+		vm.drawSprite(x, y)
+		vm.pc += 2
 
 	case 0xE000:
 		switch vm.op & 0x00FF {
@@ -274,36 +444,7 @@ func (vm *chip8) FDE() {
 	
 }
 
-func (vm *chip8) LoadProgram(filePath string) error {
-	//Reads file using os library
-	file, fileErr := os.OpenFile(filePath, os.O_RDONLY, 0777)
-	if fileErr != nil {
-		return fileErr
-	}
-	defer file.Close()
 
-	//Reads file information, also using os
-	fStat, fStatErr := file.Stat()
-	if fStatErr != nil {
-		return fStatErr
-	}
-	if int64(len(vm.mem)-512) < fStat.Size() { //Checks file size doesn't exceed memory space
-		return fmt.Errorf("File size is greater than memory")
-	}
-
-	buffer := make([]byte, fStat.Size())
-	//Checks file can be read properly
-	if _, readErr := file.Read(buffer); readErr != nil {
-		return readErr
-	}
-
-	//If there are no errors, replace every byte in memory from 0x200 onward
-	for i := 0; i < len(buffer); i++ {
-		vm.mem[i+512] = buffer[i]
-	}
-
-	return nil
-}
 
 
 
