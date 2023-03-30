@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	chip8 "alex/chip8/chip8"
+	chip8 "alex/chip8/emulator"
 )
 
 // runCmd represents the run command

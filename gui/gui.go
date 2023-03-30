@@ -11,6 +11,13 @@ import(
 //Instead of using SDL, which was not playing nice with Cobra, I 
 //decided to use another library called pixel
 
+const (
+	winX			float64 = 64 
+	winY			float64 = 32 
+	screenWidth		float64 = 1024
+	screenHeight	float64 = 768
+)
+
 type Window struct {
 	*pixelgl.Window
 }
@@ -33,7 +40,7 @@ func (win *Window) DrawGraphics(gfx ([64 * 32]uint8)) {
 	win.Clear(colornames.Black)
 	imDraw := imdraw.New(nil)
 	imDraw.Color = pixel.RGB(1, 1, 1)
-	w, h := float64(1024/64), float64(768/32)
+	w, h := float64(screenWidth/winX), float64(screenHeight/winY)
 
 	for i := 0; i < 64; i++ {
 		for j := 0; j < 32; j++ {
