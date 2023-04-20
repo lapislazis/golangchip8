@@ -6,6 +6,7 @@ import(
 	"github.com/faiface/pixel/pixelgl"
 	"golang.org/x/image/colornames"
 	"fmt"
+	"time"
 )
 
 //Instead of using SDL, which was not playing nice with Cobra, I 
@@ -20,6 +21,8 @@ const (
 
 type Window struct {
 	*pixelgl.Window
+	KeyMap		map[uint16]pixelgl.Button
+	KeysDown	[16]*time.Ticker
 }
 
 func NewWindow() (*Window, error) {
@@ -33,7 +36,22 @@ func NewWindow() (*Window, error) {
 		return nil, fmt.Errorf("Error creating new window: %v", err)
 	}
 
-	return &Window{win}, nil
+	km := map[uint16]pixelgl.Button{
+		0x1: pixelgl.Key1, 0x2: pixelgl.Key2,
+		0x3: pixelgl.Key3, 0xC: pixelgl.Key4,
+		0x4: pixelgl.KeyQ, 0x5: pixelgl.KeyW,
+		0x6: pixelgl.KeyE, 0xD: pixelgl.KeyR,
+		0x7: pixelgl.KeyA, 0x8: pixelgl.KeyS,
+		0x9: pixelgl.KeyD, 0xE: pixelgl.KeyF,
+		0xA: pixelgl.KeyZ, 0x0: pixelgl.KeyX,
+		0xB: pixelgl.KeyC, 0xF: pixelgl.KeyV,
+	}
+
+	return &Window{
+		Window:		win,
+		KeyMap:		km,
+		KeysDown:	[16]*time.Ticker{},
+	}, nil
 }
 
 func (win *Window) DrawGraphics(gfx ([64 * 32]uint8)) {

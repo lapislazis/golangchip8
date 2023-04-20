@@ -12,7 +12,8 @@ import (
 	gui "alex/chip8/gui"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
-	sdl "github.com/veandco/go-sdl2/sdl"
+	//sdl "github.com/veandco/go-sdl2/sdl"
+	rand "math/rand"
 )
 
 // Format of the fontset
@@ -77,7 +78,10 @@ type chip8 struct {
 	drawFlag bool
 
 	//Keyboard
-	key [16]uint8 //CHIP-8 keypad had 16 keys
+	key [16]byte //CHIP-8 keypad had 16 keys
+
+	//Debug flag
+	debug bool
 
 	//Channel to check for shutdown signal
 	ShutdownChan chan struct{}
@@ -88,7 +92,7 @@ type chip8 struct {
 }
 
 //Initialise emulator instance
-func NewVM(filePath string, clockSpeed int)  (*chip8, error) {
+func NewVM(filePath string, clockSpeed int, debug bool)  (*chip8, error) {
 	win, err := gui.NewWindow()
 	if err != nil {
 		fmt.Println(err)
@@ -105,6 +109,8 @@ func NewVM(filePath string, clockSpeed int)  (*chip8, error) {
 		Clock:			time.NewTicker(time.Second / time.Duration(clockSpeed)),
 		ShutdownChan:	make(chan struct{}),
 		win:			win,
+		key: 			[16]byte{},
+		debug:			debug,
 		}
 
 	//Load fontset
@@ -126,15 +132,15 @@ func (vm *chip8) Run() {
 		select {
 		case <-vm.Clock.C:
 			if !vm.win.Closed() {
-				if vm.delayTime > 0 {
 					vm.delayTimeTick()
-				} else {
 					vm.FDE()
 					vm.drawOrUpdate()
-					vm.KeyPoll()
+					vm.handleKeyInput()
 					vm.delayTimeTick()
 					vm.soundTimeTick()
-				}
+					if vm.debug == true {
+						vm.consoleDebug()
+					}
 				continue
 			}
 			break
@@ -154,89 +160,117 @@ func (vm *chip8) drawOrUpdate() {
 	}
 }
 
-func (vm *chip8) KeyPoll() {
-	if sdlError := sdl.Init(sdl.INIT_EVERYTHING); sdlError != nil {
-		panic(sdlError)
-	}
-	for poll := sdl.PollEvent(); poll != nil; poll = sdl.PollEvent() {
-			switch pl := poll.(type) {
-			case *sdl.QuitEvent:
-				fmt.Printf("Quit event detected")		
-			case *sdl.KeyboardEvent:
-				if pl.Type == sdl.KEYUP {
-					switch pl.Keysym.Sym {
-					case sdl.K_1:
-						vm.Key(0x1, false)
-					case sdl.K_2:
-						vm.Key(0x2, false)
-					case sdl.K_3:
-						vm.Key(0x3, false)
-					case sdl.K_4:
-						vm.Key(0xC, false)
-					case sdl.K_q:
-						vm.Key(0x4, false)
-					case sdl.K_w:
-						vm.Key(0x5, false)
-					case sdl.K_e:
-						vm.Key(0x6, false)
-					case sdl.K_r:
-						vm.Key(0xD, false)
-					case sdl.K_a:
-						vm.Key(0x7, false)
-					case sdl.K_s:
-						vm.Key(0x8, false)
-					case sdl.K_d:
-						vm.Key(0x9, false)
-					case sdl.K_f:
-						vm.Key(0xE, false)
-					case sdl.K_z:
-						vm.Key(0xA, false)
-					case sdl.K_x:
-						vm.Key(0x0, false)
-					case sdl.K_c:
-						vm.Key(0xB, false)
-					case sdl.K_v:
-						vm.Key(0xF, false)
-					}
-				} else if pl.Type == sdl.KEYDOWN {
-					switch pl.Keysym.Sym {
-					case sdl.K_1:
-						vm.Key(0x1, true)
-					case sdl.K_2:
-						vm.Key(0x2, true)
-					case sdl.K_3:
-						vm.Key(0x3, true)
-					case sdl.K_4:
-						vm.Key(0xC, true)
-					case sdl.K_q:
-						vm.Key(0x4, true)
-					case sdl.K_w:
-						vm.Key(0x5, true)
-					case sdl.K_e:
-						vm.Key(0x6, true)
-					case sdl.K_r:
-						vm.Key(0xD, true)
-					case sdl.K_a:
-						vm.Key(0x7, true)
-					case sdl.K_s:
-						vm.Key(0x8, true)
-					case sdl.K_d:
-						vm.Key(0x9, true)
-					case sdl.K_f:
-						vm.Key(0xE, true)
-					case sdl.K_z:
-						vm.Key(0xA, true)
-					case sdl.K_x:
-						vm.Key(0x0, true)
-					case sdl.K_c:
-						vm.Key(0xB, true)
-					case sdl.K_v:
-						vm.Key(0xF, true)
-					}
-				}
+// func (vm *chip8) keyPoll() {
+// 	if sdlError := sdl.Init(sdl.INIT_EVERYTHING); sdlError != nil {
+// 		panic(sdlError)
+// 	}
+// 	for poll := sdl.PollEvent(); poll != nil; poll = sdl.PollEvent() {
+// 			switch pl := poll.(type) {
+// 			case *sdl.QuitEvent:
+// 				fmt.Printf("Quit event detected")		
+// 			case *sdl.KeyboardEvent:
+// 				if pl.Type == sdl.KEYUP {
+// 					switch pl.Keysym.Sym {
+// 					case sdl.K_1:
+// 						vm.Key(0x1, false)
+// 					case sdl.K_2:
+// 						vm.Key(0x2, false)
+// 					case sdl.K_3:
+// 						vm.Key(0x3, false)
+// 					case sdl.K_4:
+// 						vm.Key(0xC, false)
+// 					case sdl.K_q:
+// 						vm.Key(0x4, false)
+// 					case sdl.K_w:
+// 						vm.Key(0x5, false)
+// 					case sdl.K_e:
+// 						vm.Key(0x6, false)
+// 					case sdl.K_r:
+// 						vm.Key(0xD, false)
+// 					case sdl.K_a:
+// 						vm.Key(0x7, false)
+// 					case sdl.K_s:
+// 						vm.Key(0x8, false)
+// 					case sdl.K_d:
+// 						vm.Key(0x9, false)
+// 					case sdl.K_f:
+// 						vm.Key(0xE, false)
+// 					case sdl.K_z:
+// 						vm.Key(0xA, false)
+// 					case sdl.K_x:
+// 						vm.Key(0x0, false)
+// 					case sdl.K_c:
+// 						vm.Key(0xB, false)
+// 					case sdl.K_v:
+// 						vm.Key(0xF, false)
+// 					}
+// 				} else if pl.Type == sdl.KEYDOWN {
+// 					switch pl.Keysym.Sym {
+// 					case sdl.K_1:
+// 						vm.Key(0x1, true)
+// 					case sdl.K_2:
+// 						vm.Key(0x2, true)
+// 					case sdl.K_3:
+// 						vm.Key(0x3, true)
+// 					case sdl.K_4:
+// 						vm.Key(0xC, true)
+// 					case sdl.K_q:
+// 						vm.Key(0x4, true)
+// 					case sdl.K_w:
+// 						vm.Key(0x5, true)
+// 					case sdl.K_e:
+// 						vm.Key(0x6, true)
+// 					case sdl.K_r:
+// 						vm.Key(0xD, true)
+// 					case sdl.K_a:
+// 						vm.Key(0x7, true)
+// 					case sdl.K_s:
+// 						vm.Key(0x8, true)
+// 					case sdl.K_d:
+// 						vm.Key(0x9, true)
+// 					case sdl.K_f:
+// 						vm.Key(0xE, true)
+// 					case sdl.K_z:
+// 						vm.Key(0xA, true)
+// 					case sdl.K_x:
+// 						vm.Key(0x0, true)
+// 					case sdl.K_c:
+// 						vm.Key(0xB, true)
+// 					case sdl.K_v:
+// 						vm.Key(0xF, true)
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+
+func (vm *chip8) handleKeyInput() {
+	for i, key := range vm.win.KeyMap {
+		if vm.win.JustReleased(key) && vm.win.KeysDown[i] != nil {
+			vm.win.KeysDown[i].Stop()
+			vm.win.KeysDown[i] = nil
+		} else if vm.win.JustPressed(key) {
+			if vm.win.KeysDown[i] == nil {
+				vm.win.KeysDown[i] = time.NewTicker(time.Second / 5)
 			}
+			vm.setKeyDown(byte(i))
+		}
+
+		if vm.win.KeysDown[i] == nil {
+			continue
+		}
+
+		select {
+		case <-vm.win.KeysDown[i].C:
+			vm.setKeyDown(byte(i))
+		default:
 		}
 	}
+}
+
+func (vm *chip8) setKeyDown(index byte) {
+	vm.key[index] = 1
+}
 
 func (vm *chip8) LoadProgram(filePath string) error {
 	//Reads file using os library
@@ -367,43 +401,44 @@ func (vm *chip8) drawSprite(x, y uint16) {
 func (vm *chip8) FDE() {
 	//Sets opcode variable to whats in mem, shift left, OR whats in mem+1
 	vm.op = (uint16(vm.mem[vm.pc]) << 8) | uint16(vm.mem[vm.pc+1])
+	vm.drawFlag = false
 
 	//Match opcode to first nibble
 	switch vm.op & 0xF000 {
 
 	//First nibble is 0000
 	case 0x0000: 
-		switch vm.op & 0x000F {
-			case 0x0000: //0x00E0 clears screen
+		switch vm.op & 0x00FF {
+
+			case 0x00E0: //0x00E0 clears screen
 				vm.gfx = [64 * 32]byte{}
 				vm.pc += 2
-			case 0x000E: //0x00EE returns from a subroutine
+
+			case 0x00EE: //0x00EE returns from a subroutine
 				vm.pc = vm.stack[vm.sp] + 2
 				vm.sp--
-			default: 
-				fmt.Printf("Invalid opcode 0x%X\n", vm.op)
 			}
 		
 	//First nibble is 0001
 	case 0x1000: //0x1NNN jumps to NNN on memory
 		//Program counter = last 3 nibbles of opcode
-		vm.pc = vm.op & 0x0FFF
+		vm.pc = (vm.op & 0x0FFF)
 
 	//First nibble is 0002
 	case 0x2000: //0x2nnn calls subroutine at nnn
-		vm.sp += 1 
+		vm.sp++
 		vm.stack[vm.sp] = vm.pc 
-		vm.pc = vm.op & 0x0FFF
+		vm.pc = (vm.op & 0x0FFF)
 
 	case 0x3000: //0x3XKK Skips next instruction if VX = KK
-		if uint16(vm.v[(vm.op & 0x0F00) >> 8]) == uint16(vm.op & 0x00FF) {
+		if uint16(vm.v[((vm.op & 0x0F00) >> 8)]) == uint16(vm.op & 0x00FF) {
 			vm.pc += 4
 		} else { //Otherwise does nothing
 			vm.pc += 2
 		}
 
 	case 0x4000: //0x4XKK skips next instruction if VX != KK
-		if uint16(vm.v[(vm.op & 0x0F00) >> 8]) != uint16(vm.op & 0x00FF) {
+		if uint16(vm.v[((vm.op & 0x0F00) >> 8)]) != uint16(vm.op & 0x00FF) {
 			vm.pc += 4
 		} else { //Otherwise does nothing
 			vm.pc += 2 
@@ -424,28 +459,33 @@ func (vm *chip8) FDE() {
 		vm.v[(vm.op & 0x0F00) >> 8] += byte(vm.op & 0x00FF)
 		vm.pc += 2
 
-	case 0x8000: 
+	case 0x8000: //Arithmetic operations
 		switch vm.op & 0x000F { //Check the last nibble 
 			
+			case 0x0000: //0x8XY0 Sets VX to VY
+				vm.v[(vm.op & 0x0F00) >> 8] = vm.v[(vm.op & 0x00F0) >> 4]
+				vm.pc += 2
+
 			case 0x0001: //0x8XY1 Sets VX to VX OR VY
-				vm.v[(vm.op & 0x0F00) >> 8] = (vm.v[(vm.op & 0x0F00) >> 8] | vm.v[(vm.op & 0x00F0) >> 4])
+				vm.v[(vm.op & 0x0F00) >> 8] |= vm.v[(vm.op & 0x00F0) >> 4]
 				vm.pc += 2
 			
 			case 0x0002: //0x8XY2 Sets VX to VX AND VY
-				vm.v[(vm.op & 0x0F00) >> 8] = (vm.v[(vm.op & 0x0F00) >> 8] & vm.v[(vm.op & 0x00F0) >> 4])
+				vm.v[(vm.op & 0x0F00) >> 8] &= vm.v[(vm.op & 0x00F0) >> 4]
 				vm.pc += 2
 
 			case 0x0003: //0x8XY3 Sets VX to VX XOR (exclusive OR) VY
-				vm.v[(vm.op & 0x0F00) >> 8] = (vm.v[(vm.op & 0x0F00) >> 8] ^ vm.v[(vm.op & 0x00F0) >> 4])
+				vm.v[(vm.op & 0x0F00) >> 8] ^= vm.v[(vm.op & 0x00F0) >> 4]
 				vm.pc += 2
 
 			case 0x0004: //0x8XY4 Adds VY to VX, sets VF to 1 if result overflows
-				if vm.v[(vm.op & 0x00F0) >> 4] > (0xFF - vm.v[(vm.op & 0x0F00) >> 8]) {
-					vm.v[15] = 1 //Set VF to 1
+				if vm.v[(vm.op & 0x00F0) >> 4] > 0xFF - vm.v[(vm.op & 0x0F00) >> 8] {
+					vm.v[0xF] = 1 //Set VF to 1
 				} else {
-					vm.v[15] = 0
+					vm.v[0xF] = 0
 				}
-				vm.v[(vm.op & 0x0F00) >> 8] += vm.v[(vm.op & 0x00F0) >> 4] //Otherwise, add VX and VY
+				(vm.v[(vm.op & 0x0F00) >> 8]) += (vm.v[(vm.op & 0x00F0) >> 4]) //Otherwise, add VX and VY
+				vm.pc += 2
 			
 			case 0x0005: //0x8XY5 Sets VX to VX - VY, sets VF to 1 if a borrow occurs
 				if vm.v[(vm.op & 0x00F0) >> 4] > vm.v[(vm.op & 0x0F00) >> 8] {
@@ -456,14 +496,51 @@ func (vm *chip8) FDE() {
 				vm.v[(vm.op & 0x0F00) >> 8] -= vm.v[(vm.op & 0x00F0) >> 4]
 				vm.pc += 2
 
-			//case 0x0006: //Sets VX to VY right shifted by 1, setting VF to the bit lost in the shift
+			case 0x0006: //0x8XY6 Sets VX to VY right shifted by 1, setting VF to the bit lost in the shift
+				vm.v[(vm.op & 0x0F00) >> 8] = ((vm.v[(vm.op & 0x00F0) >> 4]) >> 1)
+				vm.v[0xF] = (vm.v[vm.op & 0x00F0 >> 4] & 0x01)
+				vm.pc += 2
 
+			case 0x0007: //0x8XY7 Sets VX to VY - VX, and sets VF to 1 if VY > VX
+				if vm.v[(vm.op & 0x0F00) >> 8] > vm.v[(vm.op & 0x00F0) >> 4] {
+					vm.v[0xF] = 0
+				} else {
+					vm.v[0xF] = 1
+				} 
+				vm.v[(vm.op & 0x0F00) >> 8] = ((vm.v[(vm.op & 0x00F0) >> 4]) - (vm.v[(vm.op & 0x0F00) >> 8]))
+				vm.pc += 2
 
+			case 0x000E: //0x8XYE sets VX to VX bit-shifted left by 1, sets VF to 1 if the MSB of VX is 1
+				vm.v[(vm.op & 0x0F00) >> 8] = ((vm.v[(vm.op & 0x00F0) >> 4]) << 1)
+				vm.v[0xf] = (vm.v[(vm.op & 0x00F0) >> 4] & 0x80)
+				vm.pc += 2
 
-			}
+				//if (vm.v[(vm.op & 0x0F00) >> 8] & 0xF000) == 1 {
+				//	vm.v[0xf] = 1
+				//} else {
+				//	vm.v[0xf] = 0
+				//}
+				//vm.v[(vm.op & 0x0F00) >> 8] = (vm.v[(vm.op & 0x0F00) >> 8] << 1)
+				//vm.pc += 2
+		}
+
+	case 0x9000: //0x9XY0 skips the next instruction if VX is not equal to VY
+		if vm.v[(vm.op & 0x0F00) >> 8] != vm.v[(vm.op & 0x00F0) >> 4] {
+			vm.pc += 4
+		} else {
+			vm.pc += 2
+		}
 
 	case 0xA000: //0xANNN Sets I to address NNN
-		vm.I = vm.op & 0x0FFF
+		vm.I = (vm.op & 0x0FFF)
+		vm.pc += 2
+
+	case 0xB000: //0xBNNN jumps to address NNN + V0
+		vm.pc = ((vm.op & 0x0FFF) + uint16(vm.v[0]))
+		vm.pc += 2
+
+	case 0xC000: //0xCXKK sets VX to a random byte AND KK
+		vm.v[(vm.op & 0x0F00) >> 8] = byte(rand.Float32()*255) & byte(vm.op & 0x00FF)
 		vm.pc += 2
 
 	case 0xD000: //0xDXYN Draws sprite of length N in memory starting at I at co-ords (VX, VY)
@@ -474,28 +551,74 @@ func (vm *chip8) FDE() {
 
 	case 0xE000:
 		switch vm.op & 0x00FF {
-			case 0x009E:
+			case 0x009E: //0xE09E Skips next instruction if the key with value VX is pressed
 				if vm.key[vm.v[(vm.op & 0x0F00) >> 8]] == 1 {
 					vm.pc += 4
+					vm.key[vm.v[(vm.op & 0x0F00) >> 8]] = 0
 				} else {
 					vm.pc += 2
 				}
-		//0x00A1 here
-			default:
-				fmt.Printf("Invalid opcode 0x%x\n", vm.op)
-				vm.pc += 2
+
+			case 0x00A1: //0xE0A1 Skips next instructions if the key with value VX is NOT pressed
+				if vm.key[vm.v[(vm.op & 0x0F00) >> 8]] == 0 {
+					vm.pc += 4
+				} else {
+					vm.key[vm.v[(vm.op & 0x0F00) >> 8]] = 0
+					vm.pc += 2
+				}
 		}	
 
-	case 0xF000:
+	case 0xF000: //Memory and register management
 		switch vm.op & 0x00FF {
+
+			case 0x0007: //0xFX07 sets VX to the value of the delay timer
+				vm.v[(vm.op & 0x0F00) >> 8] = vm.delayTime
+				vm.pc += 2
+
+			case 0x000A: //0xFX0A waits for a key press, then stores key value in VX
+				for i, k := range vm.key {
+					if k != 0 {
+						vm.v[(vm.op & 0x0F00) >> 8] = byte(i)
+						vm.pc += 2
+						break
+					}
+				}
+				//Causing strange crashes during waiting
+				//vm.key[vm.v[(vm.op & 0x0F00) >> 8]] = 0 Causing strange crashes during waiting
+
 			case 0x0015: //0xFX15 sets delay timer to VX
 				vm.delayTime = vm.v[(vm.op & 0x0F00) >> 8]
 				vm.pc += 2
+
 			case 0x0018: //0xFX18 sets sound timer to VX
 				vm.soundTime = vm.v[(vm.op & 0x0F00) >> 8]
 				vm.pc += 2
-			default:
-				fmt.Printf("Invalid opcode 0x%x\n", vm.op)
+
+			case 0x001E: //0xFX1E sets I to I + VX
+				vm.I += uint16(vm.v[(vm.op & 0x0F00) >> 8])
+				vm.pc += 2
+
+			case 0x0029: //0xFX29 sets I to the location for the font sprite corresponding to VX
+				vm.I = uint16(vm.v[(vm.op & 0x0F00) >> 8]) * 5 
+				vm.pc += 2
+
+			case 0x0033: //0xFX33 Stores the binary of VX in memory locations I, I+1 and I+2
+				vm.mem[vm.I] = (vm.v[(vm.op & 0x0F00) >> 8]) / 100
+				vm.mem[vm.I+1] = (vm.v[(vm.op & 0x0F00) >> 8] / 10) % 10
+				vm.mem[vm.I+2] = (vm.v[(vm.op & 0x0F00) >> 8] % 100) % 10
+				vm.pc += 2
+				//Very complicated, needed help!
+
+			case 0x0055: //0xFX55 stores registers V0 -> VX in memory starting at I
+				for i := uint16(0); i <= ((vm.op & 0x0F00) >> 8); i++ {
+					vm.mem[vm.I+i] = vm.v[i]
+				}
+				vm.pc += 2
+
+			case 0x0065: //0xFX65 READS registers V0 through VX FROM memory starting at I
+				for i := uint16(0); i <= ((vm.op & 0x0F00) >> 8); i++ {
+					vm.v[i] = vm.mem[vm.I+i]
+				}
 				vm.pc += 2
 			}
 
@@ -503,6 +626,37 @@ func (vm *chip8) FDE() {
 		fmt.Printf("Invalid opcode 0x%X\n", vm.op)
 		vm.pc += 2
 	}
+}
+
+func (vm *chip8) consoleDebug() {
+	fmt.Printf(`
+opcode: %x
+pc: %d
+sp: %d
+i: %d
+---Registers---
+V0: %d
+V1: %d
+V2: %d
+V3: %d
+V4: %d
+V5: %d
+V6: %d
+V7: %d
+V8: %d
+V9: %d
+VA: %d
+VB: %d
+VC: %d
+VD: %d
+VE: %d
+VF: %d`,
+		vm.op, vm.pc, vm.sp, vm.I, vm.v[0],
+		vm.v[1], vm.v[2], vm.v[3], vm.v[4],
+		vm.v[5], vm.v[6], vm.v[7], vm.v[8],
+		vm.v[9], vm.v[10], vm.v[11], vm.v[12],
+		vm.v[13], vm.v[14], vm.v[15],
+	)
 }
 	
 

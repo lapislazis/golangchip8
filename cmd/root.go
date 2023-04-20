@@ -28,12 +28,14 @@ func runRoot(cmd *cobra.Command, args []string) {
 }
 
 var clockSpeed int
+var debug bool
 
 func init() {
 	rootCmd.AddCommand(runCmd)
 
 	//Defines an optional flag to set the clock speed
 	runCmd.Flags().IntVarP(&clockSpeed, "clockspeed", "c", 700, "Set clock speed")
+	runCmd.Flags().BoolVarP(&debug, "debug", "d", false, "Enable debug mode by appending \"--debug=[true/false]\"")
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

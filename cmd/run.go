@@ -27,7 +27,7 @@ func runChip8(cmd *cobra.Command, args []string) {
 	filePath := os.Args[2]
 
 	//Starts new vm
-	vm, err := chip8.NewVM(filePath, clockSpeed)
+	vm, err := chip8.NewVM(filePath, clockSpeed, debug)
 	if err != nil {
 		fmt.Printf("\nError creating a new CHIP-8 VM: %v\n", err)
 		os.Exit(1)
